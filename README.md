@@ -23,6 +23,17 @@ This package occupies that niche.
 dotnet add package Kebechet.Types.Result
 ```
 
+## Types in this package
+
+| Type | When to use |
+|---|---|
+| `Result` | Library call that returns no value; only failure is "it threw." |
+| `Result<TError>` | Library call that returns no value; closed enum of documented failures + native exception channel. |
+| `DataResult<TValue>` | Library call that returns a value; only failure is "it threw." |
+| `DataResult<TValue, TError>` | Library call that returns a value; closed enum of documented failures + native exception channel. |
+
+The non-generic `Result` types and the `DataResult` types can also be subclassed to give per-operation return types named docs (e.g. `WriteHealthDataResult : Result<WriteError>` carrying its own `RecordIds` property). Use the generic `DataResult` directly for simple cases; subclass when you want a self-documenting return type.
+
 ## Usage
 
 ### Exception-only outcome
@@ -117,6 +128,60 @@ LogPlatformException(result.ErrorException!);
 ```
 
 The `switch` expression over a `WriteError` enum is exhaustively checked by the compiler (warning `CS8509` - promote to error in your csproj for hard enforcement).
+
+### Generic value carrier (no per-operation subclass)
+
+For simple cases where a per-operation type would be overkill:
+
+```csharp
+using Types.Result;
+
+public DataResult<int> CountSessions()
+{
+    try
+    {
+        return new DataResult<int> { Value = _native.CountSessions() };
+    }
+    catch (Exception ex)
+    {
+        return new DataResult<int> { ErrorException = ex };
+    }
+}
+
+public DataResult<UserProfile, ProfileError> GetProfile(string id)
+{
+    if (!_hasPermission)
+    {
+        return new DataResult<UserProfile, ProfileError> { Error = ProfileError.Forbidden };
+    }
+
+    try
+    {
+        var profile = _native.LoadProfile(id);
+        return new DataResult<UserProfile, ProfileError> { Value = profile };
+    }
+    catch (Exception ex)
+    {
+        return new DataResult<UserProfile, ProfileError> { ErrorException = ex };
+    }
+}
+```
+
+Reading the value:
+
+```csharp
+var result = service.GetProfile("abc");
+
+if (!result.IsSuccess)
+{
+    HandleFailure(result);
+    return;
+}
+
+var profile = result.Value!;  // safe to dereference once IsSuccess is checked
+```
+
+`Value` is only meaningful when `IsSuccess` is `true`. On failure, reference-typed values are `null` and value-typed values are `default(TValue)` - always check `IsSuccess` first.
 
 ## Design notes
 
